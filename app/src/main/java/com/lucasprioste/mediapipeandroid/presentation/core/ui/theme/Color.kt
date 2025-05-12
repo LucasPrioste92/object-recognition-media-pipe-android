@@ -1,4 +1,4 @@
-package com.lucasprioste.mediapipeandroid.ui.theme
+package com.lucasprioste.mediapipeandroid.presentation.core.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

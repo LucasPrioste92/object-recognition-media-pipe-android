@@ -10,6 +10,11 @@ activityCompose = "1.10.1"
 composeBom = "2025.04.01"
 mediapipeTasksVision = "0.10.21"
 cameraX = "1.4.2"
+serialization = "1.8.1"
+navigationCompose = "2.8.9"
+koin = "4.0.4"
+accompanist = "0.37.3"
+undercouch = "5.6.0"
 
 [libraries]
 # UI
@@ -41,10 +46,24 @@ camerax-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "ca
 camerax-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "cameraX" }
 camerax-view = { module = "androidx.camera:camera-view", version.ref = "cameraX" }
 
+# Serialization
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
+
+# Navigation
+androidx-compose-navigation = { group = "androidx.navigation", name = "navigation-compose", version.ref="navigationCompose"}
+
+# Koin
+koin-android = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koin" }
+
+# Permissions
+accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanist" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+undercouch-download = { id = "de.undercouch.download", version.ref = "undercouch" }
 
 [bundles]
 camerax = [

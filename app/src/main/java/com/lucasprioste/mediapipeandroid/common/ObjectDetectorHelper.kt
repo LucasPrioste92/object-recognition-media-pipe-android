@@ -1,0 +1,128 @@
+package com.lucasprioste.mediapipeandroid.common
+
+import android.content.Context
+import android.os.SystemClock
+import android.util.Log
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.core.graphics.scale
+import com.google.mediapipe.framework.image.BitmapImageBuilder
+import com.google.mediapipe.framework.image.MPImage
+import com.google.mediapipe.tasks.core.BaseOptions
+import com.google.mediapipe.tasks.core.Delegate
+import com.google.mediapipe.tasks.vision.core.ImageProcessingOptions
+import com.google.mediapipe.tasks.vision.core.RunningMode
+import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetector
+import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetectorResult
+import com.lucasprioste.mediapipeandroid.domain.models.object_detection.ObjectDetectionModel
+import com.lucasprioste.mediapipeandroid.domain.models.object_detection.ObjectDetectionResultBundle
+
+class ObjectDetectorHelper(
+    private val context: Context,
+    private var threshold: Float = 0.5f,
+    private var maxResults: Int = 5,
+    private var currentDelegate: Delegate = Delegate.CPU,
+    private var currentModel: ObjectDetectionModel = ObjectDetectionModel.EFFICIENTDET,
+    private var runningMode: RunningMode = RunningMode.LIVE_STREAM,
+    private var onResults: ((ObjectDetectionResultBundle) -> Unit)? = null,
+): ImageAnalysis.Analyzer {
+    private var objectDetector: ObjectDetector? = null
+    private var imageRotation = 0
+    private var frameSkipCounter = 0
+
+    init {
+        setupObjectDetector()
+    }
+
+    override fun analyze(image: ImageProxy) {
+        if (frameSkipCounter % 5 == 0) {
+            frameSkipCounter = 0
+            classifyObject(image)
+        } else image.close()
+        frameSkipCounter++
+    }
+
+    // Initialize the object detector using current settings on the
+    // thread that is using it. CPU can be used with detectors
+    // that are created on the main thread and used on a background thread, but
+    // the GPU delegate needs to be used on the thread that initialized the detector
+    private fun setupObjectDetector() {
+        val baseOptionsBuilder = BaseOptions.builder()
+            .setDelegate(currentDelegate)
+            .setModelAssetPath(currentModel.fileName)
+
+        val options = ObjectDetector.ObjectDetectorOptions.builder()
+            .setBaseOptions(baseOptionsBuilder.build())
+            .setScoreThreshold(threshold)
+            .setRunningMode(runningMode)
+            .setMaxResults(maxResults)
+            .setResultListener(this::returnLivestreamResult)
+            .build()
+
+        try {
+            objectDetector = ObjectDetector.createFromOptions(context, options)
+        } catch (e: IllegalStateException) {
+            e.printStackTrace()
+            Log.e(TAG, "TFLite failed to load model with error: " + e.message)
+        } catch (e: RuntimeException) {
+            e.printStackTrace()
+            Log.e(TAG, "Object detector failed to load model with error: " + e.message)
+        }
+    }
+
+    private fun clearObjectDetector() {
+        objectDetector?.close()
+        objectDetector = null
+    }
+
+    // Return the detection result to this ObjectDetectorHelper's caller
+    private fun returnLivestreamResult(
+        result: ObjectDetectorResult,
+        input: MPImage,
+    ) {
+        val finishTimeMs = SystemClock.uptimeMillis()
+        val inferenceTime = finishTimeMs - result.timestampMs()
+
+        onResults?.invoke(
+            ObjectDetectionResultBundle(
+                results = listOf(result),
+                inferenceTime = inferenceTime,
+                inputImageHeight = input.height,
+                inputImageWidth = input.width,
+                inputImageRotation = imageRotation,
+            )
+        )
+    }
+
+    // Analyze image frames from camera
+    private fun classifyObject(imageProxy: ImageProxy) {
+        if (objectDetector == null) setupObjectDetector()
+
+        val frameTime = SystemClock.uptimeMillis()
+        val imageBitmap = imageProxy.toBitmap().scale(
+            width = currentModel.expectedWidth,
+            height = currentModel.expectedHeight,
+        )
+        imageProxy.close()
+
+        if (imageProxy.imageInfo.rotationDegrees != imageRotation) {
+            imageRotation = imageProxy.imageInfo.rotationDegrees
+            clearObjectDetector()
+            setupObjectDetector()
+            return
+        }
+
+        val mpImage = BitmapImageBuilder(imageBitmap).build()
+
+        val imageProcessingOptions = ImageProcessingOptions.builder()
+            .setRotationDegrees(imageRotation)
+            .build()
+
+        objectDetector?.detectAsync(mpImage, imageProcessingOptions, frameTime)
+        mpImage.close()
+    }
+
+    companion object {
+        const val TAG = "ObjectDetectorHelper"
+    }
+}
