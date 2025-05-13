@@ -110,11 +110,11 @@ class ObjectDetectorHelper(
         mpImage.close()
     }
 
-    companion object {
-        const val TAG = "ObjectDetectorHelper"
-    }
-
     override fun analyze(image: ImageProxy) {
         classifyObject(image)
+    }
+
+    companion object {
+        const val TAG = "ObjectDetectorHelper"
     }
 }

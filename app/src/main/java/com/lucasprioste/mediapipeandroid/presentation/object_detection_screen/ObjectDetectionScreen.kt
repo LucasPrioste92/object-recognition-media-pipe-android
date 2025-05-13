@@ -58,16 +58,11 @@ fun ObjectDetectionScreen() {
         }
     }
 
-    Box(
-        modifier = Modifier.fillMaxSize(),
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
         if (state.status.isGranted) {
             CameraPreview(
                 modifier = Modifier.fillMaxSize(),
                 controller = controller,
-                onResults = {
-                    results = it
-                }
             )
         }
         ObjectDetectorOverlay(
