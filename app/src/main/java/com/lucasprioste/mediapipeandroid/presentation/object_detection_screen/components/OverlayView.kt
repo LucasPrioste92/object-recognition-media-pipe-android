@@ -1,12 +1,8 @@
 package com.lucasprioste.mediapipeandroid.presentation.object_detection_screen.components
 
-import android.graphics.Color.BLACK
-import android.graphics.Color.WHITE
-import android.graphics.Paint
+import android.graphics.Matrix
 import android.graphics.RectF
-import android.util.Log
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -14,134 +10,152 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.PaintingStyle
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetectorResult
 import com.lucasprioste.mediapipeandroid.R
-import java.util.Locale
+import kotlin.math.max
 
 @Composable
 fun ObjectDetectorOverlay(
     modifier: Modifier = Modifier,
-    detectionResults: List<ObjectDetectorResult>? = null,
-    componentWidth: Int = 0,
-    componentHeight: Int = 0,
-    imageRotation: Int? = 0,
-    imageAnalysedWidth: Int = 0,
-    imageAnalysedHeight: Int = 0,
+    results: List<ObjectDetectorResult>? = null,
+    outputWidth: Int = 0,
+    outputHeight: Int = 0,
+    imageRotation: Int = 0,
+    clear: Boolean = false
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val textSize = with(density) { 16.sp.toPx() }
+    val strokeWidth = with(density) { 8.dp.toPx() }
+    val textPadding = with(density) { 8.dp.toPx() }
 
+    // Create primary color from resources
+    val primaryColor = remember {
+        Color(ContextCompat.getColor(context, R.color.purple_200))
+    }
+
+    // Create text paint for rendering labels
     val textPaint = remember {
-        Paint().apply {
-            color = WHITE
-            textSize = 50f
-            style = Paint.Style.FILL
+        android.graphics.Paint().apply {
+            color = Color.White.toArgb()
+            this.textSize = textSize
         }
     }
 
-    val textBackgroundPaint = remember {
+    // Create background paint for text labels
+    val backgroundPaint = remember {
         Paint().apply {
-            color = BLACK
-            style = Paint.Style.FILL
+            color = Color.Black
+            style = PaintingStyle.Fill
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            if (detectionResults == null) return@Canvas
+    Canvas(modifier = modifier.fillMaxSize()) {
+        if (results == null || outputWidth <= 0 || outputHeight <= 0 || clear) {
+            return@Canvas
+        }
 
-            detectionResults.forEach { result ->
-                result.detections().forEach { detection ->
-                    // Get the bounding box from the detection
-                    val bbox = detection.boundingBox()
+        // Calculate the rotated width and height
+        val rotatedWidthHeight = when (imageRotation) {
+            0, 180 -> Pair(outputWidth, outputHeight)
+            90, 270 -> Pair(outputHeight, outputWidth)
+            else -> return@Canvas
+        }
 
-                    val rotatedBox = when (imageRotation) {
-                        0 -> RectF(
-                            bbox.left / imageAnalysedWidth * componentWidth,
-                            bbox.top / imageAnalysedHeight * componentHeight,
-                            bbox.right / imageAnalysedWidth * componentWidth,
-                            bbox.bottom / imageAnalysedHeight * componentHeight
-                        )
+        // Calculate scale factor based on running mode
+        val scaleFactor = max(
+            size.width / rotatedWidthHeight.first,
+            size.height / rotatedWidthHeight.second,
+        )
 
-                        90 -> RectF(
-                            (imageAnalysedHeight - bbox.bottom) / imageAnalysedHeight * componentWidth,
-                            bbox.left / imageAnalysedWidth * componentHeight,
-                            (imageAnalysedHeight - bbox.top) / imageAnalysedHeight * componentWidth,
-                            bbox.right / imageAnalysedWidth * componentHeight
-                        )
+        val translateX = (size.width - rotatedWidthHeight.first * scaleFactor) / 2f
+        val translateY = (size.height - rotatedWidthHeight.second * scaleFactor) / 2f
 
-                        180 -> RectF(
-                            (imageAnalysedWidth - bbox.right) / imageAnalysedWidth * componentWidth,
-                            (imageAnalysedHeight - bbox.bottom) / imageAnalysedHeight * componentHeight,
-                            (imageAnalysedWidth - bbox.left) / imageAnalysedWidth * componentWidth,
-                            (imageAnalysedHeight - bbox.top) / imageAnalysedHeight * componentHeight
-                        )
+        // Process and draw all detections
+        results.forEach { result ->
+            result.detections().forEachIndexed { index, detection ->
 
-                        270 -> RectF(
-                            bbox.top / imageAnalysedHeight * componentWidth,
-                            (imageAnalysedWidth - bbox.right) / imageAnalysedWidth * componentHeight,
-                            bbox.bottom / imageAnalysedHeight * componentWidth,
-                            (imageAnalysedWidth - bbox.left) / imageAnalysedWidth * componentHeight
-                        )
+                // Get the original bounding box
+                val boxRect = RectF(
+                    detection.boundingBox().left,
+                    detection.boundingBox().top,
+                    detection.boundingBox().right,
+                    detection.boundingBox().bottom
+                )
 
-                        else -> throw IllegalArgumentException("Unsupported rotation: $imageRotation")
-                    }
+                // Create and apply matrix for rotation handling
+                val matrix = Matrix()
+                matrix.postTranslate(-outputWidth / 2f, -outputHeight / 2f)
 
-                    // Debug log
-                    Log.d(
-                        "ObjectDetectorOverlay",
-                        "View: ${componentWidth}x${componentHeight}, " +
-                                "Orig: $bbox, Rot: $rotatedBox, RotDeg: $imageRotation"
+                // Rotate box
+                matrix.postRotate(imageRotation.toFloat())
+
+                // Handle translation after rotation for 90/270 degrees
+                if (imageRotation == 90 || imageRotation == 270) {
+                    matrix.postTranslate(outputHeight / 2f, outputWidth / 2f)
+                } else {
+                    matrix.postTranslate(outputWidth / 2f, outputHeight / 2f)
+                }
+
+                // Apply transformations to the bounding box
+                matrix.mapRect(boxRect)
+
+                // Apply scale factor and translation
+                val left = boxRect.left * scaleFactor + translateX
+                val top = boxRect.top * scaleFactor + translateY
+                val right = boxRect.right * scaleFactor + translateX
+                val bottom = boxRect.bottom * scaleFactor + translateY
+
+                // Draw bounding box around detected objects
+                drawRect(
+                    color = primaryColor,
+                    topLeft = Offset(left, top),
+                    size = Size(right - left, bottom - top),
+                    style = Stroke(width = strokeWidth)
+                )
+
+                // Create text to display alongside detected objects
+                val category = detection.categories()[0]
+                val drawableText =
+                    "${category.categoryName()} ${String.format("%.2f", category.score())}"
+
+                // Measure text to calculate background rectangle size
+                val textBounds = android.graphics.Rect()
+                val tempPaint = android.graphics.Paint().apply {
+                    this.textSize = textPaint.textSize
+                }
+                tempPaint.getTextBounds(drawableText, 0, drawableText.length, textBounds)
+                val textWidth = textBounds.width()
+                val textHeight = textBounds.height()
+
+                // Draw rect behind display text
+                drawIntoCanvas { canvas ->
+                    canvas.nativeCanvas.drawRect(
+                        left,
+                        top,
+                        left + textWidth + textPadding,
+                        top + textHeight + textPadding,
+                        backgroundPaint.asFrameworkPaint()
                     )
 
-                    // Draw bounding box
-                    drawRect(
-                        color = Color(ContextCompat.getColor(context, R.color.purple_500)),
-                        topLeft = Offset(rotatedBox.left, rotatedBox.top),
-                        size = Size(rotatedBox.width(), rotatedBox.height()),
-                        style = Stroke(width = 3.dp.toPx())
+                    // Draw text for detected object
+                    canvas.nativeCanvas.drawText(
+                        drawableText,
+                        left,
+                        top + textHeight,
+                        textPaint
                     )
-
-                    // Create text to display
-                    val category = detection.categories()[0]
-                    val drawableText = "${category.categoryName()} ${
-                        String.format(
-                            locale = Locale.getDefault(),
-                            format = "%.2f",
-                            category.score(),
-                        )
-                    }"
-
-                    drawIntoCanvas { canvas ->
-                        val bounds = android.graphics.Rect()
-                        textPaint.getTextBounds(drawableText, 0, drawableText.length, bounds)
-                        val padding = 8f
-
-                        // label below the box
-                        val textX = rotatedBox.left
-                        val textY = rotatedBox.top + bounds.height() + padding
-
-                        // background
-                        canvas.nativeCanvas.drawRect(
-                            textX,
-                            rotatedBox.top,
-                            textX + bounds.width() + padding,
-                            textY,
-                            textBackgroundPaint
-                        )
-                        // text
-                        canvas.nativeCanvas.drawText(
-                            drawableText,
-                            textX + padding / 2,
-                            textY - padding / 2,
-                            textPaint
-                        )
-                    }
                 }
             }
         }

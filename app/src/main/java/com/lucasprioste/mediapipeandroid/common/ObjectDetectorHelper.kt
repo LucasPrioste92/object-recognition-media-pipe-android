@@ -5,7 +5,6 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
-import androidx.core.graphics.scale
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.framework.image.MPImage
 import com.google.mediapipe.tasks.core.BaseOptions
@@ -19,7 +18,7 @@ import com.lucasprioste.mediapipeandroid.domain.models.object_detection.ObjectDe
 
 class ObjectDetectorHelper(
     private val context: Context,
-    private var threshold: Float = 0.5f,
+    private var threshold: Float = 0.3f,
     private var maxResults: Int = 5,
     private var currentDelegate: Delegate = Delegate.CPU,
     private var currentModel: ObjectDetectionModel = ObjectDetectionModel.EFFICIENTDET,
@@ -28,18 +27,9 @@ class ObjectDetectorHelper(
 ): ImageAnalysis.Analyzer {
     private var objectDetector: ObjectDetector? = null
     private var imageRotation = 0
-    private var frameSkipCounter = 0
 
     init {
         setupObjectDetector()
-    }
-
-    override fun analyze(image: ImageProxy) {
-        if (frameSkipCounter % 5 == 0) {
-            frameSkipCounter = 0
-            classifyObject(image)
-        } else image.close()
-        frameSkipCounter++
     }
 
     // Initialize the object detector using current settings on the
@@ -99,11 +89,13 @@ class ObjectDetectorHelper(
         if (objectDetector == null) setupObjectDetector()
 
         val frameTime = SystemClock.uptimeMillis()
-        val imageBitmap = imageProxy.toBitmap().scale(
-            width = currentModel.expectedWidth,
-            height = currentModel.expectedHeight,
-        )
+
+        val bitmapBuffer = imageProxy.toBitmap()
         imageProxy.close()
+
+        val imageProcessingOptions = ImageProcessingOptions.builder()
+            .setRotationDegrees(imageRotation)
+            .build()
 
         if (imageProxy.imageInfo.rotationDegrees != imageRotation) {
             imageRotation = imageProxy.imageInfo.rotationDegrees
@@ -112,11 +104,7 @@ class ObjectDetectorHelper(
             return
         }
 
-        val mpImage = BitmapImageBuilder(imageBitmap).build()
-
-        val imageProcessingOptions = ImageProcessingOptions.builder()
-            .setRotationDegrees(imageRotation)
-            .build()
+        val mpImage = BitmapImageBuilder(bitmapBuffer).build()
 
         objectDetector?.detectAsync(mpImage, imageProcessingOptions, frameTime)
         mpImage.close()
@@ -124,5 +112,9 @@ class ObjectDetectorHelper(
 
     companion object {
         const val TAG = "ObjectDetectorHelper"
+    }
+
+    override fun analyze(image: ImageProxy) {
+        classifyObject(image)
     }
 }

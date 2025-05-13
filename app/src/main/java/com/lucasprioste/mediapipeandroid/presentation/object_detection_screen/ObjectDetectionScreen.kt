@@ -2,9 +2,8 @@ package com.lucasprioste.mediapipeandroid.presentation.object_detection_screen
 
 import android.Manifest
 import android.util.Log
-import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,7 +51,6 @@ fun ObjectDetectionScreen() {
 
     val controller = remember {
         LifecycleCameraController(context).apply {
-            setEnabledUseCases(CameraController.IMAGE_ANALYSIS)
             setImageAnalysisAnalyzer(
                 ContextCompat.getMainExecutor(context),
                 analyzer,
@@ -60,23 +58,24 @@ fun ObjectDetectionScreen() {
         }
     }
 
-    BoxWithConstraints(
+    Box(
         modifier = Modifier.fillMaxSize(),
     ) {
         if (state.status.isGranted) {
             CameraPreview(
                 modifier = Modifier.fillMaxSize(),
                 controller = controller,
+                onResults = {
+                    results = it
+                }
             )
         }
         ObjectDetectorOverlay(
             modifier = Modifier.fillMaxSize(),
-            detectionResults = results?.results,
-            componentWidth = this.constraints.maxWidth,
-            componentHeight = this.constraints.maxHeight,
+            results = results?.results,
             imageRotation = results?.inputImageRotation ?: 0,
-            imageAnalysedWidth = results?.inputImageWidth ?: 0,
-            imageAnalysedHeight = results?.inputImageHeight ?: 0,
+            outputWidth = results?.inputImageWidth ?: 0,
+            outputHeight = results?.inputImageHeight ?: 0,
         )
         Text(
             text = "Object Detection",
