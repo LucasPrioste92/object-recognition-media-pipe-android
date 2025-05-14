@@ -3,7 +3,6 @@ package com.lucasprioste.mediapipeandroid.common
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
-import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.framework.image.MPImage
@@ -14,7 +13,12 @@ import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetector
 import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetectorResult
 import com.lucasprioste.mediapipeandroid.domain.models.object_detection.ObjectDetectionModel
-import com.lucasprioste.mediapipeandroid.domain.models.object_detection.ObjectDetectionResultBundle
+import com.lucasprioste.mediapipeandroid.domain.models.object_detection.ObjectDetectionResult
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 
 class ObjectDetectorHelper(
     private val context: Context,
@@ -23,10 +27,12 @@ class ObjectDetectorHelper(
     private var currentDelegate: Delegate = Delegate.CPU,
     private var currentModel: ObjectDetectionModel = ObjectDetectionModel.EFFICIENTDET,
     private var runningMode: RunningMode = RunningMode.LIVE_STREAM,
-    private var onResults: ((ObjectDetectionResultBundle) -> Unit)? = null,
-): ImageAnalysis.Analyzer {
+) {
     private var objectDetector: ObjectDetector? = null
     private var imageRotation = 0
+    private val detectorScope = CoroutineScope(Dispatchers.IO)
+
+    private val results = MutableSharedFlow<ObjectDetectionResult>(replay = 0)
 
     init {
         setupObjectDetector()
@@ -60,11 +66,6 @@ class ObjectDetectorHelper(
         }
     }
 
-    private fun clearObjectDetector() {
-        objectDetector?.close()
-        objectDetector = null
-    }
-
     // Return the detection result to this ObjectDetectorHelper's caller
     private fun returnLivestreamResult(
         result: ObjectDetectorResult,
@@ -73,19 +74,21 @@ class ObjectDetectorHelper(
         val finishTimeMs = SystemClock.uptimeMillis()
         val inferenceTime = finishTimeMs - result.timestampMs()
 
-        onResults?.invoke(
-            ObjectDetectionResultBundle(
-                results = listOf(result),
-                inferenceTime = inferenceTime,
-                inputImageHeight = input.height,
-                inputImageWidth = input.width,
-                inputImageRotation = imageRotation,
+        detectorScope.launch {
+            results.emit(
+                ObjectDetectionResult(
+                    results = listOf(result),
+                    inferenceTime = inferenceTime,
+                    outputImageHeight = input.height,
+                    outputImageWidth = input.width,
+                    outputImageRotation = imageRotation,
+                )
             )
-        )
+        }
     }
 
     // Analyze image frames from camera
-    private fun classifyObject(imageProxy: ImageProxy) {
+    fun classifyObject(imageProxy: ImageProxy) {
         if (objectDetector == null) setupObjectDetector()
 
         val frameTime = SystemClock.uptimeMillis()
@@ -99,19 +102,15 @@ class ObjectDetectorHelper(
 
         if (imageProxy.imageInfo.rotationDegrees != imageRotation) {
             imageRotation = imageProxy.imageInfo.rotationDegrees
-            clearObjectDetector()
-            setupObjectDetector()
-            return
         }
 
         val mpImage = BitmapImageBuilder(bitmapBuffer).build()
-
         objectDetector?.detectAsync(mpImage, imageProcessingOptions, frameTime)
         mpImage.close()
     }
 
-    override fun analyze(image: ImageProxy) {
-        classifyObject(image)
+    fun getLiveResults() = flow {
+        results.collect { result -> emit(result) }
     }
 
     companion object {

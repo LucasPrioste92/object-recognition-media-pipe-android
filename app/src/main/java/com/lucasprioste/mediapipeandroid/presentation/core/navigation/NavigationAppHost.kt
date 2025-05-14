@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -29,7 +30,13 @@ fun NavigationAppHost(
     ) {
         composable<Route.ObjectDetectionScreen> {
             val viewModel = koinViewModel<ObjectDetectionViewModel>()
-            ObjectDetectionScreen()
+            val uiState = viewModel.uiState.collectAsStateWithLifecycle().value
+
+            ObjectDetectionScreen(
+                objectDetectionResult = uiState.objectDetectionResult,
+                cameraSettings = uiState.cameraSettings,
+                onEvent = viewModel::onEvent,
+            )
         }
     }
 }

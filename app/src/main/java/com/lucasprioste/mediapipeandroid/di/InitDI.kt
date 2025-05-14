@@ -10,6 +10,8 @@ object InitDI {
         startKoin {
             config?.invoke(this)
             modules(
+                helperModule,
+                repositoryModule,
                 viewModelModule,
             )
         }
